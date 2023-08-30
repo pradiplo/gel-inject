@@ -7,6 +7,7 @@ import numpy as np
 import re
 import cv2
 from os import listdir
+import pandas as pd
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def sorted_nicely( l ):
@@ -21,15 +22,19 @@ def binarize(img):
     bw_img = 1- bw_img
     return bw_img.astype("uint8")
 
-def get_cav(path,ori_shape,bound):
+def get_image(path,ori_shape):
     img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     #print(img.shape)
     img = cv2.resize(img,ori_shape[::-1],interpolation = cv2.INTER_AREA)
     img_dn = cv2.fastNlMeansDenoising(img)
+    #img_bin = binarize(img_dn)
+    #img_bin = img_bin[bound[0]:bound[1],bound[2]:bound[3]]
+    return img_dn
+
+def get_cav(path,ori_shape,bound):
+    img_dn = get_image(path, ori_shape)
     img_bin = binarize(img_dn)
     img_bin = img_bin[bound[0]:bound[1],bound[2]:bound[3]]
-    #plt.imshow(img_bin,cmap="gray")
-    #plt.show()
     black_idx = np.where(img_bin==1)
     #print(black_idx)
     return black_idx
@@ -37,9 +42,7 @@ def get_cav(path,ori_shape,bound):
 def get_top_bound(path,dnpath):
     deltan = np.loadtxt(dnpath,delimiter=",")
     ori_shape =deltan.shape
-    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-    img = cv2.resize(img,ori_shape[::-1],interpolation = cv2.INTER_AREA)
-    img_dn = cv2.fastNlMeansDenoising(img)
+    img_dn = get_image(path, ori_shape)
     start_idx = 90
     img_dn = img_dn[start_idx:-1,0:96]
     edges = cv2.Canny(img_dn,50,50)
@@ -106,26 +109,36 @@ def csv_to_png(path,bwpath,savepath,top_idx):
     plt.savefig(savepath,bbox_inches='tight')
     return 0
 
-def get_depth_width(path,ori_shape,bound):
-    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-    #print(img.shape)
-    img = cv2.resize(img,ori_shape[::-1],interpolation = cv2.INTER_AREA)
-    img_dn = cv2.fastNlMeansDenoising(img)
+def get_whites(path,ori_shape,bound):
+    img_dn = get_image(path,ori_shape)
     img_bin = binarize(img_dn)
     img_bin = img_bin[bound[0]:bound[1],bound[2]:bound[3]]
     #plt.imshow(img_bin,cmap="gray")
     #plt.show()
     whites = np.where(img_bin > 0)
-  
+    return whites
+
+def get_depth_width(whites):
     if len(whites[0]) > 0:
         depth = max(whites[0])
         width = max(whites[1]) - min(whites[1])
     else:
         depth = 0
         width = 0
-
-
     return depth, width
+
+def integrate_vol(whites,scale):
+    if len(whites[0]) > 0:
+        idx_z = whites[0].flatten()
+        idx_x = whites[1].flatten()
+        df_index = pd.DataFrame(np.column_stack([idx_z,idx_x]), columns=["idx_z","idx_x"])
+        a = df_index.groupby("idx_z").size().to_numpy() 
+        #print(a)
+        dv = np.pi * np.power(a,2) * (scale**3)
+        vol = np.sum(dv)
+    else:
+        vol = 0
+    return vol
 
 def get_stats(path,bwpath,savepath,top_idx):   
     deltan = np.loadtxt(path,delimiter=",")
@@ -136,12 +149,14 @@ def get_stats(path,bwpath,savepath,top_idx):
     deltan = deltan[bound[0]:bound[1],bound[2]:bound[3]]
     scale = 1.3100436681222708e-02
     mask_idx = get_cav(bwpath, ori_size,bound)
-    depth, width = get_depth_width(bwpath, ori_size,bound)
+    whites = get_whites(bwpath, ori_size,bound)
+    depth, width = get_depth_width(whites)
+    true_vol = integrate_vol(whites,scale)
     deltan[mask_idx] = 0
     #deltan = cv2.fastNlMeansDenoisingColored(deltan)
     deln_avg = np.mean(deltan)
-    vol = 0.25*np.pi * np.power((width*scale),2)* (depth*scale)
-    return depth*scale, width*scale, deln_avg, vol
+    vol_cyl = 0.25*np.pi * np.power((width*scale),2)* (depth*scale)
+    return depth*scale, width*scale, deln_avg, vol_cyl,true_vol
 
 def get_spatial_avg(path,bwpath,ymin,ymax):
     files = [i for i in sorted_nicely(listdir(path)) if i.endswith(".csv")]
@@ -168,7 +183,6 @@ def get_spatial_avg(path,bwpath,ymin,ymax):
 main_dir = "/Users/tagawayo-lab-pc43/workspace/tagawalab/amed/gel-inject/data/"
 
 work_dirs = ["test3","test12","test31","test32"]
-
 #bound3 = [232,512,0,96]
 #bound6 = [110,390,0,96]
 #bound11 = [160,440,0,96]
@@ -179,16 +193,13 @@ ddepths = []
 wwidths = []
 ddelns = []
 
-
-
-
 for work_dir in work_dirs:
 
     #print(work_dir)
     
     raw_dir = main_dir + work_dir + "/CSVs/"
-    save_dir = main_dir + "/movie/"
-    bw_dir =main_dir + work_dir + "/"
+    save_dir = main_dir + "movie/"
+    bw_dir = main_dir + work_dir + "/"
 
     files = [i for i in sorted_nicely(listdir(raw_dir)) if i.endswith(".csv") and "axis" not in i ]
     #print(files)
@@ -198,6 +209,7 @@ for work_dir in work_dirs:
     depths = []
     widths = []
     delns  = []
+    vol_cyls = []
     vols = []
     
     for i in range(0,60):
@@ -206,27 +218,30 @@ for work_dir in work_dirs:
         bwpath = bw_dir + bwfiles[i]
         spath = save_dir + work_dir + "_" + str(i).zfill(4) + ".png"
         
-        print(spath)
+        #print(spath)
         
         top_idx = get_top_bound(bw_dir + bwfiles[0],raw_dir + files[0])
-        depth, width, deln_avg,vol = get_stats(path,bwpath,spath,top_idx)
+        depth, width, deln_avg,vol_cyl,vol = get_stats(path,bwpath,spath,top_idx)
         #csv_to_png(path,bwpath,spath,top_idx)
         depths.append(depth)
         widths.append(width)
         delns.append(deln_avg)
+        vol_cyls.append(vol_cyl)
         vols.append(vol)
 
     deltat = 1/25000
     time = np.linspace(0,len(delns),len(delns))*deltat*1000   
     plt.rcParams['figure.figsize'] = (10, 8)
     plt.figure()
-    plt.plot(time, vols)
+    plt.plot(time, vols,label="Pixel by pixel slice")
+    plt.plot(time, vol_cyls,label="Tube approx")
     plt.xlabel(r'$t$ (ms)',fontsize=40)
     plt.ylabel(r'$V (\rm mm^3)$ ',fontsize=40)
     plt.xlim(0,2.)
     #plt.ylim(0,40)
     plt.tick_params(axis='both', which='major', labelsize=32)
     plt.tick_params(axis='both', which='minor', labelsize=32)
+    plt.legend(loc="best",prop={'size': 30}, framealpha=1.0)
     plt.tight_layout()
     plt.savefig(main_dir +work_dir + "vol.png")
 
@@ -248,6 +263,7 @@ deln_stack = np.column_stack((ddelns[0],ddelns[1],ddelns[2]))
 deln_avg = np.mean(deln_stack,axis=1)
 deln_std = np.std(deln_stack,axis=1)
 
+"""
 plt.rcParams['figure.figsize'] = (10, 8)
 plt.figure()
 plt.errorbar(time, width_avg,yerr=width_std)
@@ -283,7 +299,7 @@ plt.tick_params(axis='both', which='major', labelsize=32)
 plt.tick_params(axis='both', which='minor', labelsize=32)
 plt.tight_layout()
 plt.savefig(main_dir + "deln-ensemble.png")
-
+"""
 """
     plt.rcParams['figure.figsize'] = (10, 8)
     plt.figure()
