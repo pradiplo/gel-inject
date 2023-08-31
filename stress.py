@@ -1,4 +1,5 @@
 
+from cProfile import label
 import csv
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -140,11 +141,9 @@ def integrate_vol(whites,scale):
         vol = 0
     return vol
 
-def get_stats(path,bwpath,savepath,top_idx):   
+def get_stats(path,bwpath,top_idx):   
     deltan = np.loadtxt(path,delimiter=",")
     ori_size = deltan.shape
-    #top_idx = get_top_bound(bwpath,ori_size)
-    #print(top_idx)
     bound = [top_idx, top_idx+280, 0, 96]
     deltan = deltan[bound[0]:bound[1],bound[2]:bound[3]]
     scale = 1.3100436681222708e-02
@@ -153,7 +152,6 @@ def get_stats(path,bwpath,savepath,top_idx):
     depth, width = get_depth_width(whites)
     true_vol = integrate_vol(whites,scale)
     deltan[mask_idx] = 0
-    #deltan = cv2.fastNlMeansDenoisingColored(deltan)
     deln_avg = np.mean(deltan)
     vol_cyl = 0.25*np.pi * np.power((width*scale),2)* (depth*scale)
     return depth*scale, width*scale, deln_avg, vol_cyl,true_vol
@@ -169,20 +167,138 @@ def get_spatial_avg(path,bwpath,ymin,ymax):
         ori_shape = deltan.shape
         deltan = deltan[ymin:ymax,0:96]
         bound = [ymin,ymax,0,96]
-        print(bwpath + b)
-        idx_mask = get_cav(bwpath + b,ori_shape,bound)
-        #deltan[idx_mask] = 0    
-        #if clean == True:
-        #    deltan[0:170,50:60] = 0
-        #    deltan = np.where(deltan > 80, 0, deltan)      
+        #print(bwpath + b)
+        idx_mask = get_cav(bwpath + b,ori_shape,bound)   
         avg = np.mean(deltan)
         deln.append(avg)
     time = np.linspace(0,len(deln),len(deln))*deltat*1000   
     return time, deln
 
-main_dir = "/Users/tagawayo-lab-pc43/workspace/tagawalab/amed/gel-inject/data/"
 
-work_dirs = ["test3","test12","test31","test32"]
+def main_calculation(main_dir, work_dirs):
+    # tuple to store mean and std
+    volumes = ([],[]) 
+    cavityDepth = ([],[])
+    cavityMaxWidth =([],[])
+    avgDeltan = [[],[]]
+
+    for work_dir in work_dirs:
+
+        cases = [i for i in listdir( main_dir + work_dir  ) if i.startswith("2")]
+
+        depthss = np.empty(60,dtype=np.float64)
+        widthss = np.empty(60,dtype=np.float64)
+        delnss = np.empty(60,dtype=np.float64)
+        volss = np.empty(60,dtype=np.float64)
+
+        for case in cases:
+
+            bw_dir = main_dir + work_dir + case
+            bwfiles = [i for i in sorted_nicely(listdir(bw_dir )) if i.endswith(".tif")]
+            csv_dir = [i for i in listdir(main_dir + work_dir + case + "/CSVs/") if not i.startswith(".")]
+            deln_dir = main_dir + work_dir + case  + "/CSVs/" +csv_dir[0]
+            files = [i for i in sorted_nicely(listdir(deln_dir)) if i.endswith(".csv") and "axis" not in i ]
+        
+            depths = []
+            widths = []
+            delns  = []
+            vols = []   
+
+            print(main_dir + work_dir + case)
+
+            for i in range(0,60):
+                path = deln_dir + "/" + files[i]
+                bwpath = bw_dir + "/" + bwfiles[i]
+                #print(spath)
+                top_idx = get_top_bound(bw_dir + "/" + bwfiles[0],deln_dir  + "/"+ files[0])
+                depth, width, deln_avg,vol_cyl,vol = get_stats(path,bwpath,top_idx)
+                #csv_to_png(path,bwpath,spath,top_idx)
+                depths.append(depth)
+                widths.append(width)
+                delns.append(deln_avg)
+                vols.append(vol)
+
+            depths = np.array(depths)
+            widths = np.array(widths)
+            delns = np.array(delns)
+            vols = np.array(vols)
+
+            depthss = np.column_stack((depthss,depths))
+            widthss = np.column_stack((widthss,widths))
+            delnss = np.column_stack((delnss,delns))
+            volss = np.column_stack((volss,vols))
+
+        volumes[0].append(np.mean(volss,axis=1))
+        volumes[1].append(np.std(volss, axis=1))  
+        cavityDepth[0].append(np.mean(depthss,axis=1))
+        cavityDepth[1].append(np.std(depthss, axis=1))
+        cavityMaxWidth[0].append(np.mean(widthss,axis=1))
+        cavityMaxWidth[1].append(np.std(widthss, axis=1))
+        avgDeltan[0].append(np.mean(delnss,axis=1))
+        avgDeltan[1].append(np.std(delnss, axis=1)) 
+    
+    return volumes, cavityDepth, cavityMaxWidth , avgDeltan      
+
+def create_plots(v,d,w,n):
+    v_means, v_std = v
+    deltat = 1/25000
+    time = np.linspace(0,len(v_means[0]),len(v_means[0]))*deltat*1000 # in ms
+    plt.rcParams['figure.figsize'] = (10, 8)
+    plt.figure()
+    plt.errorbar(time, v_means[0],yerr=v_std[0], label="3w.t%")
+    plt.errorbar(time, v_means[1],yerr=v_std[1], label="5w.t%")
+    plt.errorbar(time, v_means[2],yerr=v_std[2], label="7w.t%")
+    plt.xlabel(r'$t$ (ms)',fontsize=40)
+    plt.ylabel(r'$V (\rm mm^3)$ ',fontsize=40)
+    plt.xlim(0,2.)
+    #plt.ylim(0,40)
+    plt.tick_params(axis='both', which='major', labelsize=32)
+    plt.tick_params(axis='both', which='minor', labelsize=32)
+    plt.legend(loc="best",prop={'size': 20}, framealpha=0.5)
+    plt.tight_layout()
+    plt.savefig("./data/volumes.png")
+    """
+    v_means, v_std = v
+    plt.rcParams['figure.figsize'] = (10, 8)
+    plt.figure()
+    plt.errorbar(time, v_means[0],yerr=v_std[0], label="3w.t%")
+    plt.errorbar(time, v_means[1],yerr=v_std[1], label="5w.t%")
+    plt.errorbar(time, v_means[2],yerr=v_std[2], label="7w.t%")
+    plt.xlabel(r'$t$ (ms)',fontsize=40)
+    plt.ylabel(r'$V (\rm mm^3)$ ',fontsize=40)
+    plt.xlim(0,2.)
+    #plt.ylim(0,40)
+    plt.tick_params(axis='both', which='major', labelsize=32)
+    plt.tick_params(axis='both', which='minor', labelsize=32)
+    plt.legend(loc="best",prop={'size': 20}, framealpha=0.5)
+    plt.tight_layout()
+    plt.savefig("./data/volumes.png")
+    """
+
+
+
+
+
+
+
+
+
+if __name__ == '__main__':
+    main_dir = "/Users/tagawayo-lab-pc43/workspace/tagawalab/amed/gel-inject/data/"
+    work_dirs =  ["3%_crysta/", "5%_crysta/", "7%_crysta/"]
+    # cavity dinamics +  delta_n
+    volumes, cavityDepth, cavityMaxWidth , avgDeltan  = main_calculation(main_dir, work_dirs)
+    create_plots(volumes, cavityDepth, cavityMaxWidth , avgDeltan)
+
+
+
+
+
+
+
+#files = [i for i in sorted_nicely(listdir(work_dirs)) if i.endswith(".csv") and "axis" not in i ]
+
+"""
 #bound3 = [232,512,0,96]
 #bound6 = [110,390,0,96]
 #bound11 = [160,440,0,96]
@@ -192,6 +308,7 @@ work_dirs = ["test3","test12","test31","test32"]
 ddepths = []
 wwidths = []
 ddelns = []
+vols = []
 
 for work_dir in work_dirs:
 
@@ -234,14 +351,14 @@ for work_dir in work_dirs:
     plt.rcParams['figure.figsize'] = (10, 8)
     plt.figure()
     plt.plot(time, vols,label="Pixel by pixel slice")
-    plt.plot(time, vol_cyls,label="Tube approx")
+    #plt.plot(time, vol_cyls,label="Tube approx")
     plt.xlabel(r'$t$ (ms)',fontsize=40)
     plt.ylabel(r'$V (\rm mm^3)$ ',fontsize=40)
     plt.xlim(0,2.)
     #plt.ylim(0,40)
     plt.tick_params(axis='both', which='major', labelsize=32)
     plt.tick_params(axis='both', which='minor', labelsize=32)
-    plt.legend(loc="best",prop={'size': 30}, framealpha=1.0)
+    plt.legend(loc="best",prop={'size': 30}, framealpha=0.5)
     plt.tight_layout()
     plt.savefig(main_dir +work_dir + "vol.png")
 
@@ -262,7 +379,7 @@ depth_std = np.std(depth_stack,axis=1)
 deln_stack = np.column_stack((ddelns[0],ddelns[1],ddelns[2]))
 deln_avg = np.mean(deln_stack,axis=1)
 deln_std = np.std(deln_stack,axis=1)
-
+"""
 """
 plt.rcParams['figure.figsize'] = (10, 8)
 plt.figure()
