@@ -281,7 +281,6 @@ def get_data(path,bwpath,axis_path,top_idx,i, half):
     return deltan, phi
 
 def tomography_op_r(deltan,phi):
-    phi[0:200,0:48] = phi[0:200,0:48] * (-1)
     phi =  np.radians(phi)
     deltan = deltan*1e-9 #nm to m
     coef = 1e-9
@@ -349,7 +348,7 @@ def tomography_op_r(deltan,phi):
 
 
 def tomography_op_l(deltan,phi):
-    #phi[0:200,0:48] = phi[0:200,0:48] * (-1)
+    phi[0:200,0:48] = phi[0:200,0:48] * (-1)
     phi =  np.radians(phi)
     deltan = deltan*1e-9 #nm to m
     coef = 1e-9
