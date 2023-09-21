@@ -295,7 +295,8 @@ def tomography_op_r(deltan,phi):
    
     dx = x_axis[1] - x_axis[0]
     dz = z_axis[1] - z_axis[0]
-
+    #print(dz)
+    
     v1 = deltan[0:200, 48:96] * np.cos(2*phi[0:200, 48:96])
     v2 = deltan[0: 200, 48:96] * np.sin(2*phi[0:200, 48:96])
 
@@ -312,38 +313,42 @@ def tomography_op_r(deltan,phi):
 
     o_rz_re = np.zeros((zn, xn))
     for j in range(zn):
-        #print(j)
         for i in range(xn):
-            #print(i)
             sum_o_rz = 0
             for k in range(i):
-                #print(k)
-                if k == 0:
-                    pass
-                else:
-                    sum_o_rz += ly[i,k ] * o_rz_re[j,i] * np.cos(theta_re[i,k ])
+                #  if k == 0:
+                #    pass
+                #else:
+                sum_o_rz += ly[i,k ] * o_rz_re[j,i] * np.cos(theta_re[i,k ])
             o_rz_re[j, i] = (v2[j, i] - 4 * coef * sum_o_rz) / (4 * coef * ly[i,i])
-    """
-    #o_rz_re = o_rz_re[:,:xn]
-    dV2 = v2[:-1, :] - v2[1:, :]
-    dV2 = np.vstack((dV2, np.zeros((1, xn))))
+    
+    #dV2 = v2[:-1, :] - v2[1:, :]
+    dV2 = np.diff(v2,axis=0)
+    dV2 = np.vstack((dV2, np.zeros((xn+1)))) 
+    o_zz_re = np.zeros((zn, xn))
 
-# Initialize o_zz_re
-    o_zz_re = np.zeros((zn, xn+1))
 
-# Loop through j and i
+    # Loop through j and i
     for j in range(zn):
-        for i in range(1,xn+1):
-            sum_V2 = dV2[j, xn - i]
+        for i in range(xn):
+            sum_V2 = 0
             sum_o_zz = 0
-            for k in range(1, i):
-                if k > 1:
-                    sum_V2 += dV2[j, xn - k]
-                    sum_o_zz += ly[xn - k, xn - i] * o_zz_re[j, xn - k]
+            for k in range(i):
+                if k == 0:
+                    if math.isnan(dV2[j, xn - k-1]):
+                        sum_V2 = 0
+                    else:     
+                        sum_V2 = dV2[j, xn - k-1]
+                else:
+                    if math.isnan(dV2[j, xn - k-1]):
+                        sum_V2 += 0
+                    else:        
+                        sum_V2 += dV2[j, xn -k-1] 
+                        sum_o_zz += ly[xn - i-1,xn - k-1] * o_zz_re[j,xn - k-1]
+            o_zz_re[j,i] = ( (sum_V2 *dx) / ( 2 * coef * dz)  + (v1[j, i] / coef) - sum_o_zz ) / ly[i,i] # aben's paper
+            #o_zz_re[j,i] = (sum_V2 * dx / (2*dz) - v1[j,i] - 2*coef * sum_o_zz) / (2*coef * ly[i,i]) #yokoyama's code
 
-            o_zz_re[j, xn - i] = (sum_V2 * dx / (2 * dz) - v1[j, xn - i] - 2 * coef * sum_o_zz) / (2 * coef * ly[xn - i, xn - i])
-    """
-    return -o_rz_re/1000, ly, r_re, theta_re, 0, o_rz_re,v2
+    return -o_rz_re/1000, ly, r_re, theta_re, -o_zz_re/1000, o_rz_re,v2,v1
 
 
 
@@ -588,7 +593,7 @@ def reconstruction_loop(main_dir, work_dirs):
                 #deln_to_png(deltan, bw_dir + "/deltan_" + str(i).zfill(4) + ".png")
                 #phi_to_png(phi, bw_dir + "/phi_" + str(i).zfill(4) + ".png")
                 #sigrz,alp,v2 = tomography_2(deltan,phi)
-                sigrz_r,ly,r, theta,sigzz,ratio, v2_r = tomography_op_r(deltan,phi)
+                sigrz_r,ly,r, theta,sigzz_r,ratio, v2_r,v1_r = tomography_op_r(deltan,phi)
                 sigrz_l,ly,r, theta,sigzz,ratio, v2_l = tomography_op_l(deltan,phi)
                 #print(sigrz)
                 sigrz = np.hstack((np.fliplr(sigrz_l),sigrz_r))
@@ -598,10 +603,10 @@ def reconstruction_loop(main_dir, work_dirs):
                 #print(np.nanmin(sigrz))
                 #print(np.nanmax(sigrz))
 
-                im = plt.imshow(sigrz,vmin=-2e2, vmax=2e2,cmap="viridis")
-                plt.colorbar(im)
-                #plt.imshow(v2)
-                #plt.imshow(sigrz)
+                im = plt.imshow(np.abs(sigzz_r),vmin=-5e2, vmax=5e2,cmap="viridis")
+                #plt.colorbar(im)
+                #plt.imshow(sigrz_r)
+                #plt.imshow(sigzz_r)
                 plt.show()
                 #plt.show()
                 #plt.savefig("./data/stress_"  + str(i).zfill(4) +".png")
