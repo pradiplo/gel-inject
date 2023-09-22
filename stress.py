@@ -336,17 +336,17 @@ def tomography_op_r(deltan,phi):
             sum_o_zz = 0
             for k in range(i):
                 if k == 0:
-                    if math.isnan(dV2[j, xn- k-1]):
+                    if math.isnan(dV2[j,xn-k-1]):
                         sum_V2 = 0
                     else:     
-                        sum_V2 = dV2[j, xn- k-1]
+                        sum_V2 = dV2[j,xn- k-1]
                 else:
-                    if math.isnan(dV2[j, xn- k-1]):
+                    if math.isnan(dV2[j,xn-k-1]):
                         sum_V2 += 0
                     else:        
-                        sum_V2 += dV2[j, xn- k-1] 
-                        sum_o_zz += ly[xn- i-1,xn- k-1] * o_zz_re[j,xn- k-1]
-            o_zz_re[j,xn- i-1] = ( (sum_V2 *dx) / ( 2 * coef * dz)  + (v1[j, i] / coef) - sum_o_zz ) / ly[xn- i-1,xn- i-1] # aben's paper
+                        sum_V2 += dV2[j, xn-k-1] 
+                        sum_o_zz += ly[xn-i-1,xn-k-1] * o_zz_re[j,xn-k-1]
+            o_zz_re[j,xn-i-1] = ( (sum_V2 *dx) / ( 2 * coef * dz)  + (v1[j, xn-i-1] / coef) - sum_o_zz ) / ly[xn-i-1,xn-i-1] # aben's paper
             #o_zz_re[j,i] = (sum_V2 * dx / (2*dz) - v1[j,i] - 2*coef * sum_o_zz) / (2*coef * ly[i,i]) #yokoyama's code
 
     return -o_rz_re/1000, ly, r_re, theta_re, -o_zz_re/1000, o_rz_re,v2,v1
@@ -404,23 +404,24 @@ def tomography_op_l(deltan,phi):
 
 
     # Loop through j and i
+    # Loop through j and i
     for j in range(zn):
         for i in range(xn):
             sum_V2 = 0
             sum_o_zz = 0
             for k in range(i):
                 if k == 0:
-                    if math.isnan(dV2[j, xn- k-1]):
+                    if math.isnan(dV2[j,xn-k-1]):
                         sum_V2 = 0
                     else:     
-                        sum_V2 = dV2[j, xn- k-1]
+                        sum_V2 = dV2[j,xn- k-1]
                 else:
-                    if math.isnan(dV2[j, xn- k-1]):
+                    if math.isnan(dV2[j,xn-k-1]):
                         sum_V2 += 0
                     else:        
-                        sum_V2 += dV2[j, xn- k-1] 
-                        sum_o_zz += ly[xn- i-1,xn- k-1] * o_zz_re[j,xn- k-1]
-            o_zz_re[j,xn- i-1] = ( (sum_V2 *dx) / ( 2 * coef * dz)  + (v1[j, i] / coef) - sum_o_zz ) / ly[xn- i-1,xn- i-1] # aben's paper
+                        sum_V2 += dV2[j, xn-k-1] 
+                        sum_o_zz += ly[xn-i-1,xn-k-1] * o_zz_re[j,xn-k-1]
+            o_zz_re[j,xn-i-1] = ( (sum_V2 *dx) / ( 2 * coef * dz)  + (v1[j, xn-i-1] / coef) - sum_o_zz ) / ly[xn-i-1,xn-i-1]  # aben's paper
             #o_zz_re[j,xn- i-1] = (sum_V2 * dx / (2*dz) - v1[j,xn- i-1] - 2*coef * sum_o_zz) / (2*coef * ly[xn- i-1,xn- i-1])    #yokoyama's code
 
 
@@ -613,8 +614,8 @@ def reconstruction_loop(main_dir, work_dirs):
                 #print(np.nanmin(sigrz))
                 #print(np.nanmax(sigrz))
 
-                im = plt.imshow(sigrz,vmin=-5e2, vmax=5e2,cmap="viridis")
-                #plt.colorbar(im)
+                im = plt.imshow(sigzz,vmin=-5e2, vmax=5e2,cmap="viridis")
+                plt.colorbar(im)
                 #plt.imshow(sigrz_r)
                 #plt.imshow(sigzz_r)
                 plt.show()
